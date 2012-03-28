@@ -1,0 +1,23 @@
+--- 
+prod:
+  sales:
+    host: 10.10.0.2
+    user: salesuser
+    password: salespass
+    database: salesdatabase
+  support:
+    host: 10.10.0.3
+    user: supportuser
+    password: supportpass
+    database: supportdatabase
+preprod:
+  sales:
+    host: 10.20.0.2
+    user: salesuser
+    password: salespass
+    database: salesdatabase
+  support:
+    host: 10.20.0.3
+    user: supportuser
+    password: supportpass
+    database: supportdatabase
