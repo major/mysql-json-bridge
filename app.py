@@ -72,10 +72,11 @@ def index(environment=None, database=None):
     # Connect to the database and run the query
     try:
         db = Connection(**creds)
-    except Exception as (errno, errstr):
-        return (errno, errstr)
+    except:
+        abort(500)
     try:
-        results = db.query(request.form['sql'])
+        sql = request.form['sql'].replace(r'%',r'%%')
+        results = db.query(sql)
     except Exception as (errno, errstr):
         return (errno, errstr)
 
