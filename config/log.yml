@@ -1,0 +1,4 @@
+---
+type: file
+logfile: /tmp/test.log
+backupCount: 1
