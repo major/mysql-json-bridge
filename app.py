@@ -23,14 +23,36 @@ import json
 import os
 import sys
 import yaml
+import logging
 
 app = Flask(__name__)
-app.debug = True
 
 # Helps us find non-python files installed by setuptools
 def data_file(fname):
     """Return the path to a data file of ours."""
     return os.path.join(os.path.split(__file__)[0], fname)
+
+if not app.debug:
+    logyaml = ""
+    with open(data_file('config/log.yml'), 'r') as f:
+         logyaml = yaml.load(f)
+    import logging
+    try:
+        formatter = logging.Formatter('%(asctime)s - %(message)s')
+        if logyaml['type'] == "file":
+            from logging.handlers import RotatingFileHandler
+            file_handler = RotatingFileHandler(logyaml['logfile'],backupCount=logyaml['backupCount'])
+            file_handler.setLevel(logging.INFO)
+            file_handler.setFormatter(formatter)
+            app.logger.addHandler(file_handler)
+        elif logyaml['type'] == syslog:
+            from logging.handlers import SysLogHandler
+            syslog_handler = SysLogHandler()
+            syslog_handler.setLevel(logging.INFO)
+            syslog_handler.setFormatter(formatter)
+            app.logger.addHandler(syslog_handler)
+    except:
+        pass
 
 # Decorator to return JSON easily
 def jsonify(f):
@@ -63,6 +85,7 @@ def catch_all(path):
 @jsonify
 def index(environment=None, database=None):
     # Pick up the database credentials
+    app.logger.warning("%s requesting access to %s db in %s environment" % (request.remote_addr, database, environment))
     creds = get_db_creds(environment, database)
 
     # If we couldn't find corresponding credentials, throw a 404
@@ -71,11 +94,13 @@ def index(environment=None, database=None):
 
     # Connect to the database and run the query
     try:
+        app.logger.debug("Connecting to %s db in %s environment (%s)" % (database, environment, request.remote_addr))
         db = Connection(**creds)
     except:
         abort(500)
     try:
         sql = request.form['sql'].replace(r'%',r'%%')
+        app.logger.info("%s attempting to run \" %s \" against %s in %s" % (request.remote_addr, sql,database, environment))
         results = db.query(sql)
     except Exception as (errno, errstr):
         return (errno, errstr)
