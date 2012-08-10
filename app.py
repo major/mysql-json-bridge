@@ -20,15 +20,16 @@ import datetime
 import json
 import logging
 import os
-import sys
+from urlparse import urlparse
 import yaml
 
 
 from tornado.database import Connection
-from flask import Flask, g, render_template, Response, abort, request
+from flask import Flask, Response, abort, request
 
 
 app = Flask(__name__)
+app.debug = True
 
 
 # Helps us find non-python files installed by setuptools
@@ -40,7 +41,6 @@ if not app.debug:
     logyaml = ""
     with open(data_file('config/log.yml'), 'r') as f:
         logyaml = yaml.load(f)
-    import logging
     try:
         formatter = logging.Formatter('%(asctime)s - %(message)s')
         if logyaml['type'] == "file":
@@ -50,7 +50,7 @@ if not app.debug:
             file_handler.setLevel(logging.INFO)
             file_handler.setFormatter(formatter)
             app.logger.addHandler(file_handler)
-        elif logyaml['type'] == syslog:
+        elif logyaml['type'] == 'syslog':
             from logging.handlers import SysLogHandler
             syslog_handler = SysLogHandler()
             syslog_handler.setLevel(logging.INFO)
@@ -71,56 +71,85 @@ def jsonify(f):
     return inner
 
 
+def read_config():
+    with open(data_file('config/databases.yml'), 'r') as f:
+        databases = yaml.load(f)
+    return databases
+
+
 # Pull the database credentials from our YAML file
-def get_db_creds(environment, database):
-    with open(data_file('config/environments.yml'), 'r') as f:
-        environments = yaml.load(f)
+def get_db_creds(database):
+    databases = read_config()
+    mysql_uri = databases.get(database)
+
+    # If the database doesn't exist in the yaml, we're done
+    if not mysql_uri:
+        return False
+
+    # Parse the URL in the .yml file
     try:
-        creds = environments[environment][database]
+        o = urlparse(mysql_uri)
+        creds = {
+            'host':         o.hostname,
+            'database':     o.path[1:],
+            'user':         o.username,
+            'password':     o.password,
+        }
     except:
         creds = False
+
     return creds
 
 
-# Any request we're not looking for should get a 400
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def catch_all(path):
-    abort(400)
+# Handles the listing of available databases
+@app.route("/list", methods=['GET'])
+def return_database_list():
+    databases = read_config()
+    data = {'databases': databases.keys()}
+    return Response(json.dumps(data), mimetype='application/json')
 
 
 # This is what receives our SQL queries
-@app.route("/<environment>/<database>", methods=['POST'])
+@app.route("/query/<database>", methods=['POST'])
 @jsonify
-def index(environment=None, database=None):
+def do_query(database=None):
     # Pick up the database credentials
-    app.logger.warning("%s requesting access to %s db in %s environment" % (
-        request.remote_addr, database, environment))
-    creds = get_db_creds(environment, database)
+    # app.logger.warning("%s requesting access to %s database" % (
+    #     request.remote_addr, database))
+    creds = get_db_creds(database)
 
     # If we couldn't find corresponding credentials, throw a 404
     if creds == False:
+        return {"ERROR": "Unable to find credentials matching %s." % database}
         abort(404)
 
-    # Connect to the database and run the query
+    # Prepare the database connection
+    app.logger.debug("Connecting to %s database (%s)" % (
+        database, request.remote_addr))
+    db = Connection(**creds)
+
+    # See if we received a query
+    sql = request.form.get('sql')
+    if not sql:
+        return {"ERROR": "SQL query missing from request."}
+
+    # If the query has a percent sign, we need to excape it
+    if '%' in sql:
+        sql = sql.replace('%', '%%')
+
+    # Attempt to run the query
     try:
-        app.logger.debug("Connecting to %s db in %s environment (%s)" % (
-            database, environment, request.remote_addr))
-        db = Connection(**creds)
-    except:
-        abort(500)
-    try:
-        sql = request.form['sql'].replace(r'%', r'%%')
-        app.logger.info("%s attempting to run \" %s \" against %s in %s" % (
-            request.remote_addr, sql, database, environment))
+        app.logger.info("%s attempting to run \" %s \" against %s database" % (
+            request.remote_addr, sql, database))
         results = db.query(sql)
-    except Exception as (errno, errstr):
-        return (errno, errstr)
+    except Exception, e:
+        return {"ERROR": ": ".join(str(i) for i in e.args)}
 
     # Disconnect from the DB
     db.close()
 
-    return results
+    return {'result': results}
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0')

@@ -26,38 +26,22 @@ Get the source:
 
 Configuration
 -------------
-You'll need to tell the bridge where it can find its databases.  Look inside `config/environments.yml` for an example.
+You'll need to tell the bridge where it can find its databases.  Make a file in `config/databases.yml` with your database servers in a standard MySQL URI format:
 
-The base element is the environment.  In the example YAML file provided, the environments are _prod_ and _preprod_.  Within each environment are two databases along with the data needed to access each database.
+    --- 
+    production-sales: "mysql://myuser:mysecretpass@10.0.1.10/salesdb"
+    staging-sales: "mysql://myuser:mysecretpass@10.0.2.10/salesdb"
+
 
 Usage
 -----
 Look inside the `examples/query_test.py` file for a quick example.  To issue a query to the bridge, simply make an HTTP POST to the appropriate URL.  Your URL should be something like this:
 
-    http://localhost:5000/<environment>/<database>
+    http://localhost:5000/query/<database>
 
-Our example YAML file has a _sales_ database inside the _prod_ environment.  If you wanted to issue a query there, ensure that the URL is:
+You can also test with curl:
 
-    http://localhost:5000/prod/sales
-
-After you adjust the `examples/query_test.py` file, you should have something like this:
-
-    #!/usr/bin/env python
-    import json
-    import pprint
-    import requests
-
-
-    payload = {'sql': 'SELECT * FROM invoices WHERE paid=0'}
-    url = "http://localhost:5000/prod/sales"
-
-    r = requests.post(url, data=payload)
-
-    print r.status_code
-    try:
-        pprint.pprint(json.loads(r.text))
-    except:
-        pprint.pprint(r.text)
+    curl http://localhost:5000/query/production-sales -X POST -d 'sql=SELECT version()'
 
 *IMPORTANT* security considerations
 -----------------------------------
@@ -70,7 +54,3 @@ If you create read-only MySQL users for the bridge to use, **ensure that those u
 Got improvements?  Found a bug?
 -------------------------------
 Issue a pull request or open an issue in GitHub.  I'm still learning Python and I'm sure there are some better ways to do things than I'm currently doing them.  I appreciate and welcome all feedback you have!
-
-Thanks!  
-Major Hayden  
-major at mhtx dot net  

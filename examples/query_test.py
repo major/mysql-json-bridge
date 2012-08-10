@@ -5,7 +5,7 @@ import requests
 
 
 payload = {'sql': 'SELECT * FROM information_schema.tables'}
-url = "http://localhost:5000/my_environment/my_database"
+url = "http://localhost:5000/query/my_database"
 
 r = requests.post(url, data=payload)
 
