@@ -16,16 +16,20 @@
 
 """MySQL <-> JSON bridge"""
 
-from tornado.database import Connection
-from flask import Flask, g, render_template, Response, abort, request
 import datetime
 import json
+import logging
 import os
 import sys
 import yaml
-import logging
+
+
+from tornado.database import Connection
+from flask import Flask, g, render_template, Response, abort, request
+
 
 app = Flask(__name__)
+
 
 # Helps us find non-python files installed by setuptools
 def data_file(fname):
@@ -35,13 +39,14 @@ def data_file(fname):
 if not app.debug:
     logyaml = ""
     with open(data_file('config/log.yml'), 'r') as f:
-         logyaml = yaml.load(f)
+        logyaml = yaml.load(f)
     import logging
     try:
         formatter = logging.Formatter('%(asctime)s - %(message)s')
         if logyaml['type'] == "file":
             from logging.handlers import RotatingFileHandler
-            file_handler = RotatingFileHandler(logyaml['logfile'],backupCount=logyaml['backupCount'])
+            file_handler = RotatingFileHandler(
+                logyaml['logfile'], backupCount=logyaml['backupCount'])
             file_handler.setLevel(logging.INFO)
             file_handler.setFormatter(formatter)
             app.logger.addHandler(file_handler)
@@ -54,15 +59,17 @@ if not app.debug:
     except:
         pass
 
+
 # Decorator to return JSON easily
 def jsonify(f):
     def inner(*args, **kwargs):
         # Change our datetime columns into strings so we can serialize
-        dthandler = lambda obj: obj.isoformat() if isinstance(obj, 
+        dthandler = lambda obj: obj.isoformat() if isinstance(obj,
             datetime.datetime) else None
         jsonstring = json.dumps(f(*args, **kwargs), default=dthandler)
         return Response(jsonstring, mimetype='application/json')
     return inner
+
 
 # Pull the database credentials from our YAML file
 def get_db_creds(environment, database):
@@ -74,18 +81,21 @@ def get_db_creds(environment, database):
         creds = False
     return creds
 
+
 # Any request we're not looking for should get a 400
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def catch_all(path):
     abort(400)
 
+
 # This is what receives our SQL queries
 @app.route("/<environment>/<database>", methods=['POST'])
 @jsonify
 def index(environment=None, database=None):
     # Pick up the database credentials
-    app.logger.warning("%s requesting access to %s db in %s environment" % (request.remote_addr, database, environment))
+    app.logger.warning("%s requesting access to %s db in %s environment" % (
+        request.remote_addr, database, environment))
     creds = get_db_creds(environment, database)
 
     # If we couldn't find corresponding credentials, throw a 404
@@ -94,13 +104,15 @@ def index(environment=None, database=None):
 
     # Connect to the database and run the query
     try:
-        app.logger.debug("Connecting to %s db in %s environment (%s)" % (database, environment, request.remote_addr))
+        app.logger.debug("Connecting to %s db in %s environment (%s)" % (
+            database, environment, request.remote_addr))
         db = Connection(**creds)
     except:
         abort(500)
     try:
-        sql = request.form['sql'].replace(r'%',r'%%')
-        app.logger.info("%s attempting to run \" %s \" against %s in %s" % (request.remote_addr, sql,database, environment))
+        sql = request.form['sql'].replace(r'%', r'%%')
+        app.logger.info("%s attempting to run \" %s \" against %s in %s" % (
+            request.remote_addr, sql, database, environment))
         results = db.query(sql)
     except Exception as (errno, errstr):
         return (errno, errstr)
