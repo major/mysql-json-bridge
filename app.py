@@ -17,6 +17,7 @@
 """MySQL <-> JSON bridge"""
 
 import datetime
+import decimal
 import json
 import logging
 import os
@@ -63,12 +64,18 @@ if not app.debug:
 # Decorator to return JSON easily
 def jsonify(f):
     def inner(*args, **kwargs):
-        # Change our datetime columns into strings so we can serialize
-        dthandler = lambda obj: obj.isoformat() if isinstance(obj,
-            datetime.datetime) else None
-        jsonstring = json.dumps(f(*args, **kwargs), default=dthandler)
+        jsonstring = json.dumps(f(*args, **kwargs), default=json_fixup)
         return Response(jsonstring, mimetype='application/json')
     return inner
+
+
+def json_fixup(obj):
+    if isinstance(obj, datetime.datetime):
+        return obj.isoformat()
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    else:
+        return None
 
 
 def read_config():
@@ -114,8 +121,8 @@ def return_database_list():
 @jsonify
 def do_query(database=None):
     # Pick up the database credentials
-    # app.logger.warning("%s requesting access to %s database" % (
-    #     request.remote_addr, database))
+    app.logger.warning("%s requesting access to %s database" % (
+        request.remote_addr, database))
     creds = get_db_creds(database)
 
     # If we couldn't find corresponding credentials, throw a 404
