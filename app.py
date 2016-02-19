@@ -21,13 +21,13 @@ import decimal
 import json
 import logging
 import os
-from urlparse import urlparse
+import sys
 import yaml
 
-
-from tornado.database import Connection
 from flask import Flask, Response, abort, request
-
+from functools import wraps
+from torndb import Connection
+from urlparse import urlparse, urlunparse
 
 app = Flask(__name__)
 app.debug = True
@@ -63,7 +63,9 @@ if not app.debug:
 
 # Decorator to return JSON easily
 def jsonify(f):
+    @wraps(f)
     def inner(*args, **kwargs):
+        # Change our datetime columns into strings so we can serialize
         jsonstring = json.dumps(f(*args, **kwargs), default=json_fixup)
         return Response(jsonstring, mimetype='application/json')
     return inner
@@ -79,8 +81,51 @@ def json_fixup(obj):
 
 
 def read_config():
-    with open(data_file('config/databases.yml'), 'r') as f:
-        databases = yaml.load(f)
+    databases = {}
+    cfiles = []
+
+    cdir = data_file('conf.d/')
+    for dirname, dirnames, filenames in os.walk(cdir):
+        for filename in filenames:
+            fullpath = os.path.join(dirname, filename)
+            cfiles.append(fullpath)
+
+    for cfile in cfiles:
+        tmp = {}
+
+        if not cfile.endswith('.yaml'):
+            continue
+
+        fh = open(data_file(cfile), 'r')
+        db = yaml.load(fh)
+        fh.close()
+
+        if db is None:
+            continue
+
+        if 'identifier' not in db:
+            continue
+
+        if 'enabled' not in db:
+            continue
+
+        if db['enabled'] != 'True':
+            continue
+
+        identifier = db['identifier']
+
+        required = ['scheme', 'username', 'password', 'hostname', 'database']
+        if not all(param in db for param in required):
+            continue
+
+        scheme = db['scheme']
+        netloc = '%s:%s@%s' % (db['username'], db['password'], db['hostname'])
+        path = '/%s' % db['database']
+        conn = (scheme, netloc, path, None, None, None)
+        connection_string = urlunparse(conn)
+
+        tmp[identifier] = connection_string
+        databases = dict(databases.items() + tmp.items())
     return databases
 
 
@@ -117,16 +162,16 @@ def return_database_list():
 
 
 # This is what receives our SQL queries
-@app.route("/query/<database>", methods=['POST'])
+@app.route("/query/<database>", methods=['POST', 'GET'])
 @jsonify
 def do_query(database=None):
     # Pick up the database credentials
-    app.logger.warning("%s requesting access to %s database" % (
-        request.remote_addr, database))
+    # app.logger.warning("%s requesting access to %s database" % (
+    #     request.remote_addr, database))
     creds = get_db_creds(database)
 
     # If we couldn't find corresponding credentials, throw a 404
-    if creds == False:
+    if not creds:
         return {"ERROR": "Unable to find credentials matching %s." % database}
         abort(404)
 
@@ -138,7 +183,9 @@ def do_query(database=None):
     # See if we received a query
     sql = request.form.get('sql')
     if not sql:
-        return {"ERROR": "SQL query missing from request."}
+        sql = request.args.get('sql')
+        if not sql:
+            return {"ERROR": "SQL query missing from request."}
 
     # If the query has a percent sign, we need to excape it
     if '%' in sql:
@@ -149,6 +196,51 @@ def do_query(database=None):
         app.logger.info("%s attempting to run \" %s \" against %s database" % (
             request.remote_addr, sql, database))
         results = db.query(sql)
+        app.logger.info(results)
+    except Exception, e:
+        return {"ERROR": ": ".join(str(i) for i in e.args)}
+
+    # Disconnect from the DB
+    db.close()
+
+    return {'result': results}
+
+
+@app.route("/update/<database>", methods=['POST', 'GET'])
+@jsonify
+def do_update(database=None):
+    # Pick up the database credentials
+    # app.logger.warning("%s requesting access to %s database" % (
+    #     request.remote_addr, database))
+    creds = get_db_creds(database)
+
+    # If we couldn't find corresponding credentials, throw a 404
+    if not creds:
+        return {"ERROR": "Unable to find credentials matching %s." % database}
+        abort(404)
+
+    # Prepare the database connection
+    app.logger.debug("Connecting to %s database (%s)" % (
+        database, request.remote_addr))
+    db = Connection(**creds)
+
+    # See if we received a query
+    sql = request.form.get('sql')
+    if not sql:
+        sql = request.args.get('sql')
+        if not sql:
+            return {"ERROR": "SQL query missing from request."}
+
+    # If the query has a percent sign, we need to excape it
+    if '%' in sql:
+        sql = sql.replace('%', '%%')
+
+    # Attempt to run the query
+    try:
+        app.logger.info("%s attempting to run \" %s \" against %s database" % (
+            request.remote_addr, sql, database))
+        results = db.update(sql)
+        app.logger.info(results)
     except Exception, e:
         return {"ERROR": ": ".join(str(i) for i in e.args)}
 
