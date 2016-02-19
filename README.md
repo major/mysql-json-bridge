@@ -32,6 +32,27 @@ You'll need to tell the bridge where it can find its databases.  Make a file in 
     production-sales: "mysql://myuser:mysecretpass@10.0.1.10/salesdb"
     staging-sales: "mysql://myuser:mysecretpass@10.0.2.10/salesdb"
 
+Optionally you can use the conf.d with separate database configuration files:
+
+    # conf.d/database1.yml
+    ---
+    identifier: 'prod.database1'
+    scheme: 'mysql'
+    username: 'database1'
+    password: 'secret_password'
+    database: 'database1'
+    hostname: 'database1.domain.com'
+    enabled: 'True'
+
+    # conf.d/database2.yml
+    ---
+    identifier: 'staging.database2'
+    scheme: 'mysql'
+    username: 'database2'
+    password: 'secret_password'
+    database: 'database2'
+    hostname: 'database2.domain.com'
+    enabled: 'True'
 
 Usage
 -----
@@ -42,6 +63,13 @@ Look inside the `examples/query_test.py` file for a quick example.  To issue a q
 You can also test with curl:
 
     curl http://localhost:5000/query/production-sales -X POST -d 'sql=SELECT version()'
+
+Example wsgi file for usage with a web server:
+
+    # mysql-json-bridge.wsgi
+    import sys
+    sys.path.insert(0, '/path/to/mysql-json-bridge/')
+    from app import app as application
 
 *IMPORTANT* security considerations
 -----------------------------------
