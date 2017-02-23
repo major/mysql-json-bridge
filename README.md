@@ -26,15 +26,9 @@ Get the source:
 
 Configuration
 -------------
-You'll need to tell the bridge where it can find its databases.  Make a file in `config/databases.yml` with your database servers in a standard MySQL URI format:
+Make a conf.d directory with separate database configuration files:
 
-    --- 
-    production-sales: "mysql://myuser:mysecretpass@10.0.1.10/salesdb"
-    staging-sales: "mysql://myuser:mysecretpass@10.0.2.10/salesdb"
-
-Optionally you can use the conf.d with separate database configuration files:
-
-    # conf.d/database1.yml
+    # conf.d/database1.yaml
     ---
     identifier: 'prod.database1'
     scheme: 'mysql'
@@ -44,7 +38,7 @@ Optionally you can use the conf.d with separate database configuration files:
     hostname: 'database1.domain.com'
     enabled: 'True'
 
-    # conf.d/database2.yml
+    # conf.d/database2.yaml
     ---
     identifier: 'staging.database2'
     scheme: 'mysql'
